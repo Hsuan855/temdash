@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>溫度儀表板</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="gauge-container">
+            <canvas id="gaugeCanvas"></canvas>
+            <div class="temperature-display">
+                <span id="temperature">0</span>°C
+                <div id="temperatureLabel" class="temperature-label">Cold Zone</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span class="min-label">-10°C</span>
+                    <span class="max-label">50°C</span>
+                </div>
+                <input type="range" id="temperatureSlider" min="-10" max="50" value="0" step="1">
+            </div>
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span class="min-label">0%</span>
+                    <span class="max-label">100%</span>
+                </div>
+                <div class="humidity-slider-wrapper">
+                    <input type="range" min="0" max="100" value="50" class="humidity-slider" id="humiditySlider">
+                    <div class="humidity-value">50%</div>
+                </div>
+            </div>
+            <div class="buttons">
+                <button id="simulateBtn" class="btn simulate">模擬溫度變化</button>
+                <button id="stopBtn" class="btn stop">停止模擬</button>
+                <button id="askAIBtn" class="btn ask-ai">詢問天氣狀況</button>
+                <button id="switchSceneBtn" class="btn switch-scene">切換場景</button>
+            </div>
+        </div>
+
+        <div class="device-id">
+            <label for="deviceId">設備 ID：</label>
+            <input type="text" id="deviceId" value="myDevice001">
+        </div>
+
+        <!-- 對話面板 -->
+        <div id="chatPanel" class="chat-panel" style="display: none;">
+            <div class="chat-header">
+                <h3>天氣分析</h3>
+                <button id="closeChatBtn" class="close-btn">&times;</button>
+            </div>
+            <div id="chat" class="chat-content"></div>
+        </div>
+    </div>
+<!-- 1. 你的原本主程式邏輯（UI 初始化） -->
+    <script>
+        class TemperatureGauge {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.temperature = 0;
+                this.maxTemp = 50;
+                this.minTemp = -10;
+                
+                // 設定 Canvas 大小
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                
+                // 初始化儀表板
+                this.draw();
+            }
+
+            resize() {
+                this.canvas.width = this.canvas.offsetWidth;
+                this.canvas.height = this.canvas.offsetHeight;
+                this.centerX = this.canvas.width / 2;
+                this.centerY = this.canvas.height;
+                this.radius = Math.min(this.centerX, this.centerY) * 0.8;
+            }
+
+            draw() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // 繪製背景圓弧
+                this.drawBackground();
+                
+                // 繪製刻度
+                this.drawTicks();
+                
+                // 繪製指針
+                this.drawPointer();
+            }
+
+            drawBackground() {
+                const startAngle = Math.PI;
+                const endAngle = Math.PI * 2;
+                
+                // 繪製溫度區間
+                const zones = [
+                    { start: -10, end: 5, color: '#2196F3' },    // -10-5°C 藍色
+                    { start: 5.1, end: 20, color: '#4CAF50' },   // 5.1-20°C 綠色
+                    { start: 20.1, end: 35, color: '#FFC107' },  // 20.1-35°C 黃色
+                    { start: 35.1, end: 50, color: '#FF5722' }   // 35.1-50°C 紅色
+                ];
+
+                zones.forEach(zone => {
+                    const startAngle = Math.PI + (Math.PI * ((zone.start - this.minTemp) / (this.maxTemp - this.minTemp)));
+                    const endAngle = Math.PI + (Math.PI * ((zone.end - this.minTemp) / (this.maxTemp - this.minTemp)));
+                    
+                    this.ctx.beginPath();
+                    this.ctx.arc(this.centerX, this.centerY, this.radius, startAngle, endAngle);
+                    this.ctx.strokeStyle = zone.color;
+                    this.ctx.lineWidth = 20;
+                    this.ctx.stroke();
+                });
+            }
+
+            drawTicks() {
+                // 繪製所有刻度（每5度一個）
+                for (let i = this.minTemp; i <= this.maxTemp; i += 5) {
+                    const angle = Math.PI + (Math.PI * ((i - this.minTemp) / (this.maxTemp - this.minTemp)));
+                    const isMajorTick = i % 15 === 0;
+                    const tickLength = isMajorTick ? 15 : 8;
+                    
+                    // 繪製刻度線
+                    const x1 = this.centerX + Math.cos(angle) * (this.radius - tickLength);
+                    const y1 = this.centerY + Math.sin(angle) * (this.radius - tickLength);
+                    const x2 = this.centerX + Math.cos(angle) * this.radius;
+                    const y2 = this.centerY + Math.sin(angle) * this.radius;
+                    
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x1, y1);
+                    this.ctx.lineTo(x2, y2);
+                    this.ctx.strokeStyle = 'white';
+                    this.ctx.lineWidth = isMajorTick ? 2 : 1;
+                    this.ctx.stroke();
+
+                    // 只顯示指定的溫度標籤
+                    if (i === -10 || i === 5 || i === 20 || i === 35 || i === 50) {
+                        let labelX = this.centerX + Math.cos(angle) * (this.radius - 35);
+                        let labelY = this.centerY + Math.sin(angle) * (this.radius - 35);
+                        
+                        // 調整 -10°C 和 50°C 的位置
+                        if (i === this.minTemp) {
+                            labelX += 5;
+                            labelY -= 10;
+                        } else if (i === this.maxTemp) {
+                            labelY -= 10;
+                        }
+                        
+                        this.ctx.font = '12px Arial';
+                        this.ctx.fillStyle = 'white';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+                        this.ctx.fillText(i.toString(), labelX, labelY);
+                    }
+                }
+            }
+
+            drawPointer() {
+                const angle = Math.PI + (Math.PI * ((this.temperature - this.minTemp) / (this.maxTemp - this.minTemp)));
+                
+                // 繪製指針
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.centerX, this.centerY);
+                this.ctx.lineTo(
+                    this.centerX + Math.cos(angle) * (this.radius * 0.8),
+                    this.centerY + Math.sin(angle) * (this.radius * 0.8)
+                );
+                this.ctx.strokeStyle = '#ff0000';
+                this.ctx.lineWidth = 4;
+                this.ctx.stroke();
+
+                // 繪製指針頭部
+                this.ctx.beginPath();
+                this.ctx.arc(this.centerX, this.centerY, 8, 0, Math.PI * 2);
+                this.ctx.fillStyle = '#ff0000';
+                this.ctx.fill();
+            }
+
+            setTemperature(temp) {
+                this.temperature = Math.max(this.minTemp, Math.min(this.maxTemp, temp));
+                this.draw();
+            }
+        }
+
+        // 初始化 WebSocket 連接
+        const ws = new WebSocket('wss://hshgpt.webduino.tw');
+        const chatDiv = document.getElementById('chat');
+        const chatPanel = document.getElementById('chatPanel');
+        const askAIBtn = document.getElementById('askAIBtn');
+        const closeChatBtn = document.getElementById('closeChatBtn');
+        const humiditySlider = document.getElementById('humiditySlider');
+
+        // WebSocket 事件處理
+        ws.onopen = () => console.log('WebSocket 已連線');
+        ws.onerror = err => console.error('WebSocket 錯誤', err);
+        ws.onclose = () => console.log('WebSocket 已斷線');
+
+        ws.onmessage = event => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'start') {
+                // 顯示 AI 回應容器
+                const aiMessage = document.createElement('div');
+                aiMessage.className = 'message ai';
+                chatDiv.appendChild(aiMessage);
+                askAIBtn.disabled = true;
+            } else if (data.type === 'chunk') {
+                // 更新最後一則 AI 回應
+                const msgs = chatDiv.querySelectorAll('.message.ai');
+                const lastAiMessage = msgs[msgs.length - 1];
+                lastAiMessage.textContent += data.delta;
+                // 自動滾動到底部
+                chatDiv.scrollTop = chatDiv.scrollHeight;
+            } else if (data.type === 'end') {
+                askAIBtn.disabled = false;
+            } else if (data.type === 'error') {
+                // 顯示錯誤訊息
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'message ai';
+                errorMessage.textContent = '錯誤: ' + data.message;
+                chatDiv.appendChild(errorMessage);
+                askAIBtn.disabled = false;
+            }
+        };
+
+        // 詢問 AI 按鈕點擊事件
+        askAIBtn.onclick = () => {
+            const temperature = document.getElementById('temperature').textContent;
+            const humidity = humiditySlider.value;
+            const prompt = `根據以下溫度和濕度數據，請分析現在的天氣狀況有可能是哪一種(雪/乾冷/潮濕寒冷/涼爽乾燥/涼爽潮濕/溫暖乾燥/悶熱/炎熱/酷熱悶濕), 並且分析可能的降雨機率或是應準備的措施：溫度 ${temperature}°C，濕度 ${humidity}%`;
+            
+            // 顯示對話面板
+            chatPanel.style.display = 'block';
+            
+            // 清空之前的對話
+            chatDiv.innerHTML = '';
+            
+            // 添加使用者訊息
+            const userMessage = document.createElement('div');
+            userMessage.className = 'message user';
+            userMessage.textContent = prompt;
+            chatDiv.appendChild(userMessage);
+            
+            // 發送請求到 AI
+            ws.send(JSON.stringify({ prompt }));
+            
+            // 自動滾動到底部
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        };
+
+        // 關閉對話面板
+        closeChatBtn.onclick = () => {
+            chatPanel.style.display = 'none';
+            chatDiv.innerHTML = '';
+        };
+
+        // 初始化溫度儀表板
+        const canvas = document.getElementById('gaugeCanvas');
+        const gauge = new TemperatureGauge(canvas);
+
+        // 溫度滑桿事件處理
+        const temperatureSlider = document.getElementById('temperatureSlider');
+        if (temperatureSlider) {
+            temperatureSlider.addEventListener('input', (e) => {
+                const temp = parseFloat(e.target.value);
+                updateTemperature(temp);
+            });
+
+            // 初始化溫度滑桿
+            temperatureSlider.min = -10;
+            temperatureSlider.max = 50;
+            temperatureSlider.value = 0;
+        }
+
+        // 更新溫度滑桿標籤
+        const minLabel = document.querySelector('.temperature-slider-container .min-label');
+        const maxLabel = document.querySelector('.temperature-slider-container .max-label');
+
+        if (minLabel) {
+            minLabel.textContent = '-10°C';
+        }
+        if (maxLabel) {
+            maxLabel.textContent = '50°C';
+        }
+
+        // 模擬按鈕事件處理
+        let simulationInterval;
+        document.getElementById('simulateBtn').addEventListener('click', () => {
+            if (simulationInterval) return;
+            
+            simulationInterval = setInterval(() => {
+                const temp = Math.random() * 60 - 10; // 範圍：-10 到 50
+                const humidity = Math.random() * 100;
+                updateTemperature(temp);
+                updateHumidity(humidity);
+                document.getElementById('temperatureSlider').value = temp;
+                document.getElementById('humiditySlider').value = humidity;
+            }, 1000);
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            if (simulationInterval) {
+                clearInterval(simulationInterval);
+                simulationInterval = null;
+            }
+        });
+
+        // 濕度滑桿事件處理
+        humiditySlider.oninput = () => {
+            const value = humiditySlider.value;
+            const percentage = (value / humiditySlider.max) * 100;
+            humiditySlider.style.background = `linear-gradient(to right, #2196F3 0%, #2196F3 ${percentage}%, #e0e0e0 ${percentage}%, #e0e0e0 100%)`;
+            
+            // 更新濕度值顯示
+            const humidityValue = document.querySelector('.humidity-value');
+            if (humidityValue) {
+                humidityValue.textContent = `${value}%`;
+            }
+        };
+
+        // 初始化濕度滑桿
+        humiditySlider.oninput();
+
+        function updateTemperatureLabel(temp) {
+            const label = document.getElementById('temperatureLabel');
+            if (temp <= 5) {
+                label.textContent = 'Cold Zone';
+                label.style.color = '#2196F3';
+            } else if (temp <= 20) {
+                label.textContent = 'Normal Zone';
+                label.style.color = '#4CAF50';
+            } else if (temp <= 35) {
+                label.textContent = 'Warm Zone';
+                label.style.color = '#FFC107';
+            } else {
+                label.textContent = 'Hot Zone';
+                label.style.color = '#FF5722';
+            }
+        }
+
+        // 添加節流計時器
+        let temperatureUpdateTimer = null;
+        let lastTemperature = null;
+
+        // 更新溫度顯示和記錄
+        function updateTemperature(temp) {
+            // 數據驗證
+            if (isNaN(temp)) {
+                console.error('無效的溫度值');
+                return;
+            }
+            
+            // 限制溫度範圍
+            temp = Math.max(-10, Math.min(50, temp));
+            
+            // 更新溫度顯示（保留一位小數）
+            const temperatureElement = document.getElementById('temperature');
+            if (temperatureElement) {
+                temperatureElement.textContent = temp.toFixed(1);
+            }
+            
+            // 更新溫度標籤
+            updateTemperatureLabel(temp);
+            
+            // 更新儀表板
+            if (gauge) {
+                gauge.setTemperature(temp);
+            }
+
+            // 如果溫度沒有變化，不進行任何操作
+            if (temp === lastTemperature) {
+                return;
+            }
+            
+            // 更新最後的溫度值
+            lastTemperature = temp;
+            
+            // 清除之前的計時器
+            if (temperatureUpdateTimer) {
+                clearTimeout(temperatureUpdateTimer);
+            }
+            
+            // 設置新的計時器，0.25秒後發送資料
+            temperatureUpdateTimer = setTimeout(() => {
+                // 記錄到試算表
+                const deviceId = document.getElementById('deviceId')?.value || 'unknown';
+                const timestamp = new Date().toLocaleTimeString();
+                const humidity = parseFloat(document.getElementById('humiditySlider')?.value || '0');
+                
+                // 準備數據
+                const data = {
+                    url: 'https://docs.google.com/spreadsheets/d/1IHBseQ8vk_YpzsXAYUXVZlFM44LgcEEc3Ea4oik_x4U/edit?gid=0#gid=0',
+                    values: [deviceId, temp.toFixed(1), timestamp, humidity.toFixed(1)]
+                };
+
+                // 儲存到本地
+                saveToLocalStorage(data);
+
+                // 嘗試發送到伺服器
+                sendToServer(data);
+            }, 250); // 250毫秒 = 0.25秒
+        }
+
+        // 儲存到本地
+        function saveToLocalStorage(data) {
+            try {
+                const storedData = JSON.parse(localStorage.getItem('temperatureData') || '[]');
+                storedData.push(data);
+                localStorage.setItem('temperatureData', JSON.stringify(storedData));
+                console.log('數據已儲存到本地');
+            } catch (error) {
+                console.error('儲存到本地時發生錯誤:', error);
+            }
+        }
+
+        // 發送到伺服器
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY = 1000; // 1秒
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            notification.style.padding = '10px 20px';
+            notification.style.borderRadius = '5px';
+            notification.style.zIndex = '1000';
+            notification.style.transition = 'opacity 0.3s ease';
+            
+            // 根據類型設置顏色
+            switch(type) {
+                case 'error':
+                    notification.style.backgroundColor = '#ff5252';
+                    notification.style.color = 'white';
+                    break;
+                case 'success':
+                    notification.style.backgroundColor = '#4CAF50';
+                    notification.style.color = 'white';
+                    break;
+                case 'warning':
+                    notification.style.backgroundColor = '#FFC107';
+                    notification.style.color = 'black';
+                    break;
+                default:
+                    notification.style.backgroundColor = '#2196F3';
+                    notification.style.color = 'white';
+            }
+            
+            document.body.appendChild(notification);
+            
+            // 3秒後自動消失
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => document.body.removeChild(notification), 300);
+            }, 3000);
+        }
+
+        function sendToServer(data) {
+            if (retryCount >= MAX_RETRIES) {
+                console.log('達到最大重試次數，數據已儲存到本地');
+                showNotification('伺服器暫時無法連接，數據已儲存到本地', 'error');
+                return;
+            }
+
+            // 確保資料格式符合 API 要求
+            const requestData = {
+                url: data.url,
+                values: data.values
+            };
+
+            console.log('發送資料:', requestData);
+
+            fetch('https://hshgpt.webduino.tw/api/sheets/append', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(async response => {
+                const responseText = await response.text();
+                console.log('伺服器回應:', responseText);
+                
+                if (!response.ok) {
+                    // 檢查是否為配額限制錯誤
+                    const responseData = JSON.parse(responseText);
+                    if (responseData.message && responseData.message.includes('Quota exceeded')) {
+                        throw new Error('API 配額已用完，請稍後再試');
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}, response: ${responseText}`);
+                }
+                
+                try {
+                    return JSON.parse(responseText);
+                } catch (e) {
+                    throw new Error(`Invalid JSON response: ${responseText}`);
+                }
+            })
+            .then(responseData => {
+                if (responseData && responseData.success) {
+                    console.log('成功記錄數據到試算表');
+                    showNotification('數據已成功記錄', 'success');
+                    retryCount = 0; // 重置重試計數
+                } else {
+                    throw new Error(`記錄數據失敗: ${JSON.stringify(responseData)}`);
+                }
+            })
+            .catch(error => {
+                console.error('記錄數據時發生錯誤:', error);
+                
+                // 如果是配額限制錯誤，直接儲存到本地
+                if (error.message.includes('API 配額已用完')) {
+                    console.log('API 配額已用完，數據已儲存到本地');
+                    showNotification('API 配額已用完，數據已儲存到本地', 'warning');
+                    saveToLocalStorage(data);
+                    return;
+                }
+                
+                retryCount++;
+                if (retryCount < MAX_RETRIES) {
+                    const delay = RETRY_DELAY * retryCount;
+                    console.log(`將在 ${delay}ms 後重試...`);
+                    showNotification(`伺服器連接失敗，${delay/1000}秒後重試...`, 'error');
+                    setTimeout(() => sendToServer(data), delay);
+                } else {
+                    console.log('達到最大重試次數，數據已儲存到本地');
+                    showNotification('伺服器暫時無法連接，數據已儲存到本地', 'error');
+                }
+            });
+        }
+
+        // 定期嘗試同步本地數據到伺服器
+        function syncLocalData() {
+            try {
+                const storedData = JSON.parse(localStorage.getItem('temperatureData') || '[]');
+                if (storedData.length > 0) {
+                    console.log(`嘗試同步 ${storedData.length} 筆本地數據到伺服器`);
+                    showNotification(`正在同步 ${storedData.length} 筆本地數據...`, 'info');
+                    
+                    // 使用 Promise.all 來處理所有同步請求
+                    Promise.all(storedData.map(data => 
+                        new Promise((resolve, reject) => {
+                            fetch('https://hshgpt.webduino.tw/api/sheets/append', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify(data)
+                            })
+                            .then(response => {
+                                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                                return response.json();
+                            })
+                            .then(responseData => {
+                                if (responseData && responseData.success) {
+                                    resolve();
+                                } else {
+                                    reject(new Error('同步失敗'));
+                                }
+                            })
+                            .catch(reject);
+                        })
+                    ))
+                    .then(() => {
+                        console.log('所有本地數據同步成功');
+                        showNotification('本地數據同步成功', 'success');
+                        localStorage.removeItem('temperatureData'); // 清除已同步的數據
+                    })
+                    .catch(error => {
+                        console.error('同步本地數據時發生錯誤:', error);
+                        showNotification('同步本地數據失敗，將在下次嘗試', 'error');
+                    });
+                }
+            } catch (error) {
+                console.error('同步本地數據時發生錯誤:', error);
+                showNotification('同步本地數據失敗，將在下次嘗試', 'error');
+            }
+        }
+
+        // 每 5 分鐘嘗試同步一次本地數據
+        setInterval(syncLocalData, 5 * 60 * 1000);
+
+        // 更新濕度顯示
+        function updateHumidity(humidity) {
+            // 數據驗證
+            if (isNaN(humidity)) {
+                console.error('無效的濕度值');
+                return;
+            }
+            
+            // 限制濕度範圍
+            humidity = Math.max(0, Math.min(100, humidity));
+            
+            // 更新濕度顯示
+            const humidityValue = document.querySelector('.humidity-value');
+            if (humidityValue) {
+                humidityValue.textContent = humidity.toFixed(1) + '%';
+            }
+            
+            // 更新滑塊上的數值
+            const humiditySlider = document.getElementById('humiditySlider');
+            if (humiditySlider) {
+                humiditySlider.setAttribute('data-value', humidity.toFixed(1) + '%');
+                
+                // 更新滑桿背景顏色
+                const percentage = (humidity / humiditySlider.max) * 100;
+                humiditySlider.style.background = `linear-gradient(to right, #2196F3 0%, #2196F3 ${percentage}%, #e0e0e0 ${percentage}%, #e0e0e0 100%)`;
+            }
+        };
+    </script>
+<!-- 2. MQTT 初始化與 scheduleMQTTPublish() -->
+    <script>
+    const mqttClient = mqtt.connect('wss://mqtt-edu.webduino.io/mqtt', {
+        username: 'hsh2025',
+        password: 'hsh2025',
+        clientId: 'dash-' + Math.random().toString(36).substring(2, 10),
+        reconnectPeriod: 2000
+    });
+    
+    mqttClient.on('connect', () => {
+        console.log('[MQTT] 已連線');
+    });
+    
+    mqttClient.on('error', err => {
+        console.error('[MQTT] 錯誤:', err);
+    });
+    
+    let lastButtonClick = 0;
+    const COOLDOWN_TIME = 20000; // 20秒冷卻時間
+    let isInCooldown = false; // 新增冷卻狀態標記
+    
+    // 切換場景按鈕點擊事件
+    document.getElementById('switchSceneBtn').addEventListener('click', function() {
+        // 如果正在冷卻中，直接返回
+        if (isInCooldown) {
+            const currentTime = Date.now();
+            const remainingTime = Math.ceil((COOLDOWN_TIME - (currentTime - lastButtonClick)) / 1000);
+            showNotification(`請等待 ${remainingTime} 秒後再試`, 'warning');
+            return;
+        }
+        
+        // 更新最後點擊時間和冷卻狀態
+        lastButtonClick = Date.now();
+        isInCooldown = true;
+        
+        // 獲取當前溫度和濕度
+        const temp = parseFloat(document.getElementById('temperature').textContent);
+        const humidity = parseFloat(document.getElementById('humiditySlider').value);
+        
+        // 發送資料
+        const message = {
+            temperature: temp,
+            humidity: humidity,
+            timestamp: Date.now()
+        };
+        
+        mqttClient.publish('youle/weather/update', JSON.stringify(message));
+        console.log('[MQTT] 發送：', message);
+        showNotification('已發送最新溫濕度資料', 'success');
+        
+        // 更新按鈕狀態
+        this.disabled = true;
+        this.textContent = '冷卻中...';
+        
+        // 20秒後恢復按鈕
+        setTimeout(() => {
+            this.disabled = false;
+            this.textContent = '切換場景';
+            isInCooldown = false; // 重置冷卻狀態
+        }, COOLDOWN_TIME);
+    });
+    </script>
+</body>
+</html>

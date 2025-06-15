@@ -1,0 +1,530 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #5865F2;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+}
+
+.container {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    text-align: center;
+    max-width: 600px;
+    width: 95%;
+}
+
+.gauge-container {
+    position: relative;
+    width: 300px;
+    height: 150px;
+    margin: 0 auto;
+}
+
+#gaugeCanvas {
+    width: 100%;
+    height: 100%;
+}
+
+.temperature-display {
+    position: absolute;
+    bottom: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 2.5rem;
+    color: white;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.temperature-label {
+    font-size: 1rem;
+    color: #5865F2;
+    background: white;
+    padding: 0.3rem 1rem;
+    border-radius: 1rem;
+    margin-top: 0.5rem;
+    display: inline-block;
+}
+
+.controls {
+    margin-top: 3rem;
+}
+
+.slider-container {
+    width: 400px;
+    margin: 20px auto;
+    position: relative;
+}
+
+.slider-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+    color: white;
+    font-size: 0.9rem;
+}
+
+.min-label, .max-label {
+    position: relative;
+    top: 0;
+}
+
+input[type="range"] {
+    width: 100%;
+    height: 8px;
+    -webkit-appearance: none;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    outline: none;
+    margin: 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 濕度滑桿特殊樣式 */
+.humidity-slider {
+    background: rgba(255, 0, 0, 0.3);
+    position: relative;
+}
+
+.humidity-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 42px;
+    height: 42px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    position: relative;
+}
+
+/* 自定義濕度滑塊容器 */
+.humidity-thumb-container {
+    position: absolute;
+    width: 42px;
+    height: 42px;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 濕度數值顯示 */
+.humidity-value {
+    font-size: 12px;
+    color: #000;
+    font-weight: bold;
+    user-select: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    width: 100%;
+}
+
+.buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    margin: 8px;
+    background-color: #666666;
+    color: white;
+    width: 180px;
+    height: 40px;
+    white-space: nowrap;
+}
+
+.btn:hover {
+    background-color: #777777;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn:active {
+    background-color: #555555;
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 移除所有按鈕的特殊顏色類別 */
+.btn.simulate,
+.btn.stop,
+.btn.ask-ai,
+.btn.switch-scene {
+    background-color: #666666;
+    color: white;
+}
+
+.device-id {
+    margin-top: 1rem;
+}
+
+.device-id input {
+    padding: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+/* 對話面板樣式 */
+.chat-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    display: none;
+}
+
+.chat-header {
+    padding: 15px;
+    background: #f5f5f5;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.2rem;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background-color 0.3s;
+}
+
+.close-btn:hover {
+    background-color: #e0e0e0;
+}
+
+.chat-content {
+    padding: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.message {
+    margin-bottom: 15px;
+    max-width: 85%;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.message.user {
+    background: #4CAF50;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 18px 18px 0 18px;
+    margin-left: auto;
+}
+
+.message.ai {
+    background: #f0f0f0;
+    color: #333;
+    padding: 12px 16px;
+    border-radius: 18px 18px 18px 0;
+    margin-right: auto;
+    text-align: left;
+}
+
+/* 濕度滑桿樣式 */
+.humidity-slider-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.humidity-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: #e0e0e0;
+    outline: none;
+    margin: 10px 0;
+}
+
+.humidity-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    position: relative;
+}
+
+.humidity-slider::-moz-range-thumb {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    border: none;
+}
+
+.humidity-value {
+    position: absolute;
+    bottom: -25px;
+    left: 0;
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+    pointer-events: none;
+    min-width: 45px;
+}
+
+/* 移除濕度標籤樣式 */
+.humidity-labels {
+    display: none;
+}
+
+/* 滾動條樣式 */
+.chat-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.chat-content::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 4px;
+}
+
+.chat-content::-webkit-scrollbar-thumb:hover {
+    background: #999;
+}
+
+.legend {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin: 2rem 0;
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+}
+
+.color-block {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+}
+
+.color-block.cold { background-color: #4CAF50; }
+.color-block.normal { background-color: #2196F3; }
+.color-block.warm { background-color: #FFC107; }
+.color-block.hot { background-color: #FF5722; }
+
+label {
+    font-weight: bold;
+    color: white;
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 1rem;
+    }
+    
+    .gauge-container {
+        width: 250px;
+        height: 125px;
+    }
+    
+    .legend {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .buttons {
+        flex-direction: column;
+    }
+}
+
+/* 對話輸入框樣式 */
+.chat-input-container {
+    padding: 15px;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    gap: 10px;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 20px;
+    outline: none;
+    font-size: 14px;
+}
+
+.chat-input:focus {
+    border-color: #4CAF50;
+}
+
+.send-btn {
+    padding: 10px 20px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.send-btn:hover {
+    background: #45a049;
+}
+
+.send-btn:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+}
+
+/* 溫度滑桿樣式 */
+.temperature-slider {
+    width: 100%;
+    height: 8px;
+    -webkit-appearance: none;
+    background: linear-gradient(to right, #2196F3, #4CAF50, #FFC107, #FF5722);
+    border-radius: 4px;
+    outline: none;
+    margin: 20px 0;
+}
+
+.temperature-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.temperature-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+/* 濕度滑桿樣式 */
+.humidity-slider {
+    width: 100%;
+    height: 8px;
+    -webkit-appearance: none;
+    background: linear-gradient(to right, #f44336, #ff9800);
+    border-radius: 4px;
+    outline: none;
+    margin: 20px 0;
+}
+
+.humidity-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 40px;
+    height: 40px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    position: relative;
+}
+
+.humidity-slider::-webkit-slider-thumb::after {
+    content: attr(data-value);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    color: #333;
+}
+
+.humidity-slider::-moz-range-thumb {
+    width: 40px;
+    height: 40px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+} 
